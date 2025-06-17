@@ -171,9 +171,9 @@ go test -race ./...
 
 Nếu có câu hỏi về contributing, hãy tạo issue với label "question" hoặc liên hệ:
 
-- Email: dev.namxely@gmail.com
+- Email: namnguyen2452003@gmail.com
 - GitHub Issues: [Create an issue](https://github.com/namxely/Build-your-own-viet-redis/issues)
-- Telegram: @NamxelyDev
+
 
 ## Code of Conduct
 
