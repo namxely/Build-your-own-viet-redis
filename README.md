@@ -732,7 +732,7 @@ copies or substantial portions of the Software.
 
 **Namxely** - *Building the future, one line of code at a time*
 
-[⭐ Star this project](https://github.com/namxely/Build-your-own-viet-redis) | [🐦 Follow @namxely](https://twitter.com/namxely) | [💬 Join Discussion](https://github.com/namxely/Build-your-own-viet-redis/discussions)
+[⭐ Star this project](https://github.com/namxely/Build-your-own-viet-redis) | [🐦 Follow @namxely](https://www.facebook.com/ntn.namxely) | [💬 Join Discussion](https://github.com/namxely/Build-your-own-viet-redis/discussions)
 
 ---
 
