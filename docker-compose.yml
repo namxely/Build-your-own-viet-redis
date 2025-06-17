@@ -1,0 +1,226 @@
+version: '3.8'
+
+services:
+  vietredis-master:
+    build: .
+    container_name: vietredis-master
+    hostname: vietredis-master
+    ports:
+      - "6379:6379"
+      - "9121:9121"  # Metrics port
+    volumes:
+      - vietredis-data:/data
+      - ./vietredis.conf:/etc/vietredis/vietredis.conf:ro
+      - ./logs:/var/log/vietredis
+    environment:
+      - VIETREDIS_CONFIG=/etc/vietredis/vietredis.conf
+      - VIETREDIS_LOG_LEVEL=notice
+      - VIETREDIS_MAX_MEMORY=2gb
+      - TZ=Asia/Ho_Chi_Minh
+    networks:
+      - vietredis-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+
+  vietredis-replica:
+    build: .
+    container_name: vietredis-replica
+    hostname: vietredis-replica
+    ports:
+      - "6380:6379"
+      - "9122:9121"  # Metrics port
+    volumes:
+      - vietredis-replica-data:/data
+      - ./vietredis-replica.conf:/etc/vietredis/vietredis.conf:ro
+      - ./logs:/var/log/vietredis
+    environment:
+      - VIETREDIS_CONFIG=/etc/vietredis/vietredis.conf
+      - VIETREDIS_LOG_LEVEL=notice
+      - VIETREDIS_MAX_MEMORY=2gb
+      - VIETREDIS_REPLICA_OF=vietredis-master 6379
+      - TZ=Asia/Ho_Chi_Minh
+    networks:
+      - vietredis-network
+    depends_on:
+      vietredis-master:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+
+  vietredis-sentinel:
+    image: redis:7-alpine
+    container_name: vietredis-sentinel
+    hostname: vietredis-sentinel
+    ports:
+      - "26379:26379"
+    volumes:
+      - ./sentinel.conf:/etc/redis/sentinel.conf:ro
+      - ./logs:/var/log/redis
+    command: redis-sentinel /etc/redis/sentinel.conf
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+    networks:
+      - vietredis-network
+    depends_on:
+      vietredis-master:
+        condition: service_healthy
+      vietredis-replica:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  vietredis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: vietredis-exporter
+    hostname: vietredis-exporter
+    ports:
+      - "9121:9121"
+    environment:
+      - REDIS_ADDR=redis://vietredis-master:6379
+      - REDIS_EXPORTER_LOG_FORMAT=json
+      - REDIS_EXPORTER_NAMESPACE=namxely_vietredis
+      - TZ=Asia/Ho_Chi_Minh
+    networks:
+      - vietredis-network
+    depends_on:
+      vietredis-master:
+        condition: service_healthy
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: vietredis-prometheus
+    hostname: vietredis-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+    networks:
+      - vietredis-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: vietredis-grafana
+    hostname: vietredis-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=vietredis123
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=redis-datasource
+      - TZ=Asia/Ho_Chi_Minh
+    networks:
+      - vietredis-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: vietredis-commander
+    hostname: vietredis-commander
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=master:vietredis-master:6379,replica:vietredis-replica:6379
+      - HTTP_USER=admin
+      - HTTP_PASSWORD=vietredis123
+      - TZ=Asia/Ho_Chi_Minh
+    networks:
+      - vietredis-network
+    depends_on:
+      vietredis-master:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: vietredis-nginx
+    hostname: vietredis-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/html:/usr/share/nginx/html:ro
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+    networks:
+      - vietredis-network
+    depends_on:
+      - vietredis-master
+      - grafana
+      - redis-commander
+    restart: unless-stopped
+
+volumes:
+  vietredis-data:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${PWD}/data/master
+      o: bind
+  vietredis-replica-data:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${PWD}/data/replica
+      o: bind
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+networks:
+  vietredis-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
